@@ -1,0 +1,29 @@
+model:
+  id: Qwen/Qwen3-8B
+  revision: null
+  dtype: bfloat16
+  device_map: auto
+  chat_template_kwargs:
+    enable_thinking: false
+adapter:
+  rank: 16
+  alpha: 32
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+verifier:
+  id: MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli
+  revision: null
+  threshold: 0.65
+  device: cpu
+learning_rate: 0.00001
+weight_decay: 0.01
+gradient_clip: 1.0
+update_steps: 2
+kl_weight: 0.05
+cost_weight: 0.02
+context_length: 32768
+batch_size: 4
+max_interactions: 40
+max_checkpoints: 8
+max_states: 100000
+seed: 17
+evaluation_seeds: [17, 29, 43, 61, 83]
