@@ -2,13 +2,11 @@
 
 Code for **Learning Beyond a Single Trace: Causal Execution Lattices for Test-Time Training of Web Agents**.
 
-Long-horizon Web agents conduct extended research with intermittent verification feedback. Causal-Lattice Training (CLT) recovers a certified execution space from one verified Web trace. Action dependencies and source-aware evidence proofs represent alternative orders, evidence combinations, and valid completion paths. CLT maximizes the aggregate cost-weighted mass of certified completions through an exact inside-outside dynamic program, then updates LoRA adapters before research continues.
+Long-horizon Web agents conduct extended research with intermittent verification feedback. Existing test-time training (TTT) methods adapt large language models from execution experience, yet a single trajectory can reinforce incidental research decisions. To address this challenge, we propose Causal-Lattice Training (CLT), which recovers a certified execution space from one verified Web trace. Specifically, CLT combines action dependencies with source-aware evidence proofs to represent alternative orders, evidence combinations, and valid completion paths. We maximize the aggregate cost-weighted mass of certified completions and derive an exact dynamic-programming solution for this mass and its gradient. We further characterize conditions for sound path recovery and state compression, providing a theoretical perspective on the algorithm design. We evaluate CLT with three backbones on five Web research benchmarks covering navigation, multi-document reasoning, and report generation. CLT leads all benchmark metrics, with 3.2–5.3-point gains in answer quality and citation accuracy over the strongest baselines. Under matched test-time updates, CLT raises subsequent verification by up to 9.4 points over the frozen policy and reduces reference-policy KL by 64.6–66.0 percent relative to single-trace training. Code is available at <https://anonymous.4open.science/r/CLT-CEC5/>.
 
 <p align="center">
-  <img src="assets/overview.png" width="100%" alt="CLT combines certified action dependencies, source-aware proofs, a shared execution lattice, and exact marginalization for test-time updates.">
+  <img src="assets/overview.png" width="100%" alt="Adaptation from a Web research execution.">
 </p>
-
-The execution lattice shares partial evidence states across valid action orders and stops each path at its first verified completion. Six independent reads can represent 720 orders with 64 acquired-evidence states. Source-origin constraints distinguish independent support from quotations and republications. Complete action probabilities retain competing actions outside the recovered graph.
 
 ## Installation
 
