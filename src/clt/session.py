@@ -105,9 +105,9 @@ class OnlineAgent:
                                 documents=result.documents, provides=result.provides, requires=result.requires,
                                 stable=result.stable, expires_at=result.expires_at, status=result.status,
                                 bindings=result.bindings, bindings_complete=result.bindings_complete)
-                report, _, _ = self.checkpoint(recorder.to_dict(), goal["id"], checkpoint_dir)
+                report, _, graph = self.checkpoint(recorder.to_dict(), goal["id"], checkpoint_dir)
                 reports.append(report)
-                if report["status"] in {"updated", "already_updated", "checkpoint_budget_exhausted"}:
+                if graph["checkpoint_verified"] and (graph["has_completion"] or graph["already_satisfied"]):
                     break
             else:
                 break

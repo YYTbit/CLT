@@ -68,6 +68,8 @@ def topological_order(graph):
 
 def compress_lattice(graph):
     """Symbolic refinement preserves equality throughout parameter updates."""
+    if "original_to_group" in graph:
+        return graph
     order, outgoing = topological_order(graph)
     groups, signatures, members = {}, {}, []
     for source in reversed(order):

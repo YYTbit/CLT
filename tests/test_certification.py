@@ -45,6 +45,14 @@ def test_unknown_exchange_retains_observed_order(trace):
     assert "A" in result["dependencies"]["C"]
 
 
+def test_nonreusable_requests_and_their_dependencies_are_excluded(trace):
+    trace["tools"]["search"]["reusable_response"] = False
+    result = certify(trace, "start_year", LiteralFixtureVerifier())
+    admitted = {action["id"] for action in result["actions"]}
+    assert "R" not in admitted and "B" not in admitted
+    assert {"A", "C"} <= admitted
+
+
 @pytest.mark.parametrize("field,value,reason", [
     ("stable", False, "unstable_response"), ("status", "failed", "failed_request"),
     ("response_digest", "wrong", "response_digest_mismatch"),
@@ -76,12 +84,45 @@ def test_no_future_observations_in_context(trace):
     assert '"actions"' not in messages[-1]["content"]
 
 
+def test_declared_resources_are_visible_to_the_policy(trace):
+    import json
+
+    messages = canonical_messages(trace, trace["goals"][0], set())
+    payload = json.loads(messages[-1]["content"])
+    assert payload["initial_resources"] == sorted(trace["initial_resources"])
+
+
+def test_immutable_prefix_keeps_its_observed_order(trace):
+    import json
+
+    trace["actions"][0]["id"], trace["actions"][1]["id"] = "z", "a"
+    trace["goals"][0]["declared_after"] = 2
+    messages = canonical_messages(trace, trace["goals"][0], {"z", "a"})
+    payload = json.loads(messages[-1]["content"])
+    assert [item["action_id"] for item in payload["observations"]] == ["z", "a"]
+
+
 def test_prior_actions_are_immutable_context(trace):
     trace["goals"][0]["declared_after"] = 2
     certificate = certify(trace, "start_year", LiteralFixtureVerifier())
     graph = compile_lattice(trace, certificate)
     assert "A" not in {edge["action_id"] for edge in graph["edges"]}
     assert '"action_id":"A"' in graph["nodes"][0]["messages"][-1]["content"]
+
+
+def test_support_in_the_immutable_prefix_can_expire(trace, monkeypatch):
+    now = datetime.now(timezone.utc)
+    trace["goals"][0]["declared_after"] = 2
+    trace["actions"][1]["expires_at"] = (now + timedelta(hours=1)).isoformat()
+    certificate = certify(trace, "start_year", LiteralFixtureVerifier(), now=now)
+    assert "A" not in {action["id"] for action in certificate["actions"]}
+    class LaterClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now + timedelta(hours=2)
+    monkeypatch.setattr("clt.certification.datetime", LaterClock)
+    with pytest.raises(ValueError, match="expired"):
+        assert_fresh(certificate, trace)
 
 
 def test_fixture_verifier_is_not_a_benchmark_verifier(trace):
@@ -116,6 +157,18 @@ def test_duplicate_action_strings_cannot_exchange(trace):
     trace["actions"].insert(2, repeated)
     result = certify(trace, "start_year", LiteralFixtureVerifier())
     assert "A" in result["dependencies"]["A2"]
+
+
+def test_conflicting_responses_cannot_share_a_stable_snapshot(trace):
+    repeated = copy.deepcopy(trace["actions"][1])
+    repeated["id"] = "A2"
+    repeated["response"]["text"] = "The project started in 2021."
+    repeated["response_digest"] = digest(repeated["response"])
+    repeated["document_ids"] = []
+    trace["actions"].append(repeated)
+    result = certify(trace, "start_year", LiteralFixtureVerifier())
+    assert result["status"]["A"] == "conflicting_snapshot_responses"
+    assert result["status"]["A2"] == "conflicting_snapshot_responses"
 
 
 def test_alternative_certificates_do_not_duplicate_paths(trace):

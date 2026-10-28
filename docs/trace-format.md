@@ -26,7 +26,7 @@ An action record contains the following fields.
 
 The compiler certifies exchanges of reusable read-only requests with resolved dependencies and stable snapshots. Unresolved pairs retain their observed precedence. Identical complete action strings retain their order, preventing duplicate policy events. A state-changing operation forms a replay barrier for the current declared requirement. Declare a subsequent requirement after the barrier to train on its later read-only window.
 
-Source revisions, altered observations, and expired snapshots invalidate affected certificates. Re-capture or re-certify before further adaptation. Canonical contexts contain the immutable prefix preceding requirement declaration and the observations acquired at the current ideal. Future responses and proof candidates are excluded from the policy input.
+Source revisions, altered observations, and expired snapshots invalidate affected certificates, including support acquired in the immutable prefix. Conflicting responses to the same read-only request cannot share a stable snapshot. Re-capture or re-certify before further adaptation. Canonical contexts contain the declared initial resources, the immutable prefix in its observed order, and the observations acquired at the current ideal. Future responses and proof candidates are excluded from the policy input.
 
 ## Documents and origins
 
@@ -76,7 +76,7 @@ The objective is `-log Z + beta * KL(reference || current)`. The regularizer use
 
 Fresh LoRA adapters have zero initial contribution. Disabling them therefore evaluates the fixed entering backbone without duplicating its weights. The configured target modules cover attention and feed-forward projections; Gemma adapters are confined to its language model. AdamW uses weight decay 0.01. These module selections, token ending, KL averaging weights, and graph limit are explicit implementation settings; the shared algorithm settings are listed in the README.
 
-Each successful requirement/certificate pair receives two optimizer steps. Intermediate adapter and optimizer states are committed after each step when a checkpoint directory is configured. Resume completes the remaining steps and retains the processed-pair registry. Call `start_task` for an independent task; it restores the declared initial adapter and a fresh optimizer. A changed model, tokenizer, or configuration fails checkpoint restoration.
+Each newly verified requirement triggers up to two optimizer steps. Intermediate adapter and optimizer states are committed after each step when a checkpoint directory is configured. Resume completes the remaining steps after an interruption. A handled numerical failure closes the checkpoint and preserves its completed finite steps; research then continues with the resulting policy. The processed-requirement registry prevents retraining the same requirement from a later trace prefix. Call `start_task` for an independent task; it restores the declared initial adapter and a fresh optimizer. A changed model, tokenizer, chat template, context format, or configuration fails checkpoint restoration.
 
 ## Native environment connection
 

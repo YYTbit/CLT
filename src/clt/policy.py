@@ -2,6 +2,7 @@ import hashlib
 import inspect
 from contextlib import nullcontext
 
+from .contexts import CONTEXT_FORMAT_VERSION
 from .io import digest
 
 
@@ -72,8 +73,13 @@ class LanguageModelPolicy:
         if not self.identity.get("revision"):
             self.identity["frozen_parameters"] = parameter_digest(model)
         self.identity = {**self.identity, "tokenizer": digest(tokenizer.get_vocab()),
+                         "chat_template": digest(tokenizer.chat_template),
+                         "special_tokens": digest(tokenizer.special_tokens_map),
+                         "context_format_version": CONTEXT_FORMAT_VERSION,
                          "end_token_id": self.end_token_id, "context_length": context_length,
                          "chat_template_kwargs": self.chat_template_kwargs}
+        if hasattr(tokenizer, "backend_tokenizer"):
+            self.identity["tokenizer_backend"] = digest(tokenizer.backend_tokenizer.to_str())
         self.model.eval()
 
     @classmethod
@@ -117,9 +123,9 @@ class LanguageModelPolicy:
         return prompt, target
 
     def _logits(self, batch, reference=False):
-        context = self.model.disable_adapter() if reference else nullcontext()
         if reference and not hasattr(self.model, "disable_adapter"):
             raise ValueError("A frozen reference requires a PEFT policy")
+        context = self.model.disable_adapter() if reference else nullcontext()
         kwargs = {"input_ids": batch["input_ids"], "attention_mask": batch["attention_mask"],
                   "position_ids": batch["position_ids"], "use_cache": False}
         if self.supports_logit_limit:

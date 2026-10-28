@@ -66,7 +66,7 @@ class LatticeTrainer:
         if len(trace["actions"]) > self.config["max_interactions"]:
             raise ValueError("Task interaction budget exceeded")
         key = (certificate["goal"]["id"], certificate["certificate_id"])
-        if key in self.completed:
+        if any(goal_id == key[0] for goal_id, _ in self.completed):
             return {"status": "already_updated", "version": self.version}
         if self.active_update is not None and tuple(self.active_update["key"]) != key:
             raise ValueError("Resume the active checkpoint update before adapting another requirement")
@@ -78,11 +78,16 @@ class LatticeTrainer:
         if self.active_update is None:
             self.active_update = {"key": list(key), "steps": []}
         reports = self.active_update["steps"]
+        failure = None
         for step in range(len(reports), self.config["update_steps"]):
             assert_fresh(certificate, trace)
             edge, terminal = self._scores(graph, rows)
+            if np.isnan(edge).any() or np.isnan(terminal).any() or np.isposinf(edge).any() or np.isposinf(terminal).any():
+                failure = "completion_mass_unavailable"
+                break
             posterior = inside_outside(graph, edge, terminal, self.config["cost_weight"])
             if not math.isfinite(posterior.log_mass):
+                failure = "completion_mass_unavailable"
                 break
             self.optimizer.zero_grad(set_to_none=True)
             divergence = 0.0
@@ -96,14 +101,18 @@ class LatticeTrainer:
                 loss = -(weights.detach() * scores).sum() + self.config["kl_weight"] * regularizer
                 if not self.torch.isfinite(loss):
                     self.optimizer.zero_grad(set_to_none=True)
-                    return {"status": "nonfinite_gradient_step", "steps": reports, "version": self.version}
+                    failure = "nonfinite_gradient_step"
+                    break
                 loss.backward()
                 divergence += regularizer.detach().item()
+            if failure is not None:
+                break
             norm = self.torch.nn.utils.clip_grad_norm_(
                 [parameter for parameter in self.policy.model.parameters() if parameter.requires_grad],
                 self.config["gradient_clip"])
             if not self.torch.isfinite(norm):
                 self.optimizer.zero_grad(set_to_none=True)
+                failure = "nonfinite_gradient_step"
                 break
             self.optimizer.step()
             self.version += 1
@@ -114,17 +123,18 @@ class LatticeTrainer:
                             "gradient_norm": norm.item()})
             if checkpoint_dir is not None:
                 self.save(checkpoint_dir)
-        if len(reports) == self.config["update_steps"]:
-            self.completed.add(key)
-            self.checkpoint_count += 1
-            self.active_update = None
-        elif not reports:
-            self.active_update = None
-        report = {"status": ("updated" if key in self.completed else
-                             "partial_update" if reports else "completion_mass_unavailable"),
+        # A handled numerical failure closes this verification event. Exceptions
+        # retain the saved active update so an interruption can resume its steps.
+        self.completed.add(key)
+        self.checkpoint_count += 1
+        self.active_update = None
+        report = {"status": ("updated" if len(reports) == self.config["update_steps"] else
+                             "updated_partial" if reports else failure),
                   "task_id": self.task_id, "data_kind": graph["data_kind"],
                   "certificate_id": certificate["certificate_id"], "steps": reports,
                   "version": self.version, "checkpoint_count": self.checkpoint_count}
+        if failure is not None:
+            report["skipped_step_reason"] = failure
         self.history.append(report)
         if checkpoint_dir is not None:
             self.save(checkpoint_dir)

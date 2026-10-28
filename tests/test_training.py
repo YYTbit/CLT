@@ -152,6 +152,72 @@ def test_changed_resume_configuration_is_rejected(policy, config, tmp_path):
         trainer.restore(tmp_path)
 
 
+def test_restore_rejects_a_changed_chat_template(policy, config, tmp_path):
+    trainer = LatticeTrainer(policy, config)
+    trainer.start_task("task")
+    trainer.save(tmp_path)
+    policy.tokenizer.chat_template += "Changed instruction."
+    changed = LanguageModelPolicy(policy.model, policy.tokenizer, context_length=4096)
+    with pytest.raises(ValueError, match="tokenizer"):
+        LatticeTrainer(changed, config).restore(tmp_path)
+
+
+def test_a_verified_requirement_is_not_retrained_on_a_later_prefix(policy, graph, trace, certificate, config):
+    from clt.certification import certify
+    from clt.io import canonical, digest
+    from clt.lattice import compile_lattice
+    from clt.verification import LiteralFixtureVerifier
+
+    trainer = LatticeTrainer(policy, config)
+    trainer.start_task(trace["task_id"])
+    trainer.adapt(graph, trace=trace, certificate=certificate)
+    request = {"tool": "search", "arguments": {"query": "another topic"}}
+    response = {"links": []}
+    trace["actions"].append({"id": "R2", "serialized": canonical(request), **request,
+                              "response": response, "response_digest": digest(response),
+                              "snapshot_id": trace["snapshot_id"], "status": "ok", "stable": True,
+                              "bindings_complete": True, "latency_seconds": 0.1})
+    updated_certificate = certify(trace, "start_year", LiteralFixtureVerifier())
+    updated_graph = compile_lattice(trace, updated_certificate)
+    result = trainer.adapt(updated_graph, trace=trace, certificate=updated_certificate)
+    assert result["status"] == "already_updated"
+    assert trainer.version == 2 and trainer.checkpoint_count == 1
+
+
+def test_nonfinite_gradient_step_leaves_no_pending_update(policy, graph, trace, certificate, config, monkeypatch):
+    trainer = LatticeTrainer(policy, config)
+    trainer.start_task(trace["task_id"])
+    score = policy.score
+    def invalid_gradient(rows, with_kl=False):
+        scores, kl = score(rows, with_kl)
+        return (scores * float("nan") if with_kl else scores), kl
+    monkeypatch.setattr(policy, "score", invalid_gradient)
+    result = trainer.adapt(graph, trace=trace, certificate=certificate)
+    assert result["status"] == "nonfinite_gradient_step"
+    assert trainer.active_update is None
+    assert trainer.version == 0 and trainer.checkpoint_count == 1
+
+
+def test_unavailable_second_step_finishes_the_checkpoint(policy, graph, trace, certificate, config, monkeypatch):
+    import numpy as np
+
+    trainer = LatticeTrainer(policy, config)
+    trainer.start_task(trace["task_id"])
+    original = trainer._scores
+    calls = []
+    def unavailable_after_first_step(current, rows):
+        calls.append(1)
+        if len(calls) == 1:
+            return original(current, rows)
+        return np.full(len(current["edges"]), -np.inf), np.full(len(current["nodes"]), -np.inf)
+    monkeypatch.setattr(trainer, "_scores", unavailable_after_first_step)
+    result = trainer.adapt(graph, trace=trace, certificate=certificate)
+    assert result["status"] == "updated_partial"
+    assert trainer.active_update is None
+    assert trainer.version == 1 and trainer.checkpoint_count == 1
+    assert trainer.adapt(graph, trace=trace, certificate=certificate)["status"] == "already_updated"
+
+
 def test_context_overflow_is_explicit(policy, graph):
     policy.context_length = 1
     with pytest.raises(ValueError, match="context_length"):
@@ -177,6 +243,27 @@ def test_online_capture_adapt_and_continue(policy, trace, config, monkeypatch):
     assert trainer.version == 2
     assert [action["latency_seconds"] for action in result["actions"]] == [0.5, 0.6]
     assert len(result["actions"]) == 2
+
+
+def test_online_verification_continues_when_update_mass_is_unavailable(policy, trace, config, monkeypatch):
+    import numpy as np
+    from clt.records import TraceRecorder
+    from clt.session import OnlineAgent, SnapshotTools
+    from clt.verification import LiteralFixtureVerifier
+
+    requests = iter([trace["actions"][1]["serialized"], trace["actions"][3]["serialized"]])
+    monkeypatch.setattr(policy, "generate", lambda messages, max_new_tokens: next(requests))
+    recorder = TraceRecorder("frozen_fixture", trace["question"], trace["snapshot_id"],
+                             tools=trace["tools"], initial_resources=trace["initial_resources"],
+                             data_kind="software_fixture")
+    recorder.declare("start_year", trace["goals"][0]["text"], trace["goals"][0]["proof"])
+    trainer = LatticeTrainer(policy, config)
+    monkeypatch.setattr(trainer, "_scores", lambda current, rows: (
+        np.full(len(current["edges"]), -np.inf), np.full(len(current["nodes"]), -np.inf)))
+    result, reports = OnlineAgent(trainer, LiteralFixtureVerifier()).run(
+        recorder, SnapshotTools(trace["actions"], trace["documents"], trace["initial_resources"], trace["tools"]))
+    assert reports[-1]["status"] == "completion_mass_unavailable"
+    assert len(result["actions"]) == 2 and trainer.version == 0
 
 
 @pytest.mark.parametrize("backbone", ["qwen3", "gemma3"])

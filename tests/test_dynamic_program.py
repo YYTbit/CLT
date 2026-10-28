@@ -97,6 +97,13 @@ def test_accidentally_equal_scores_do_not_authorize_compression():
     assert len(compress_lattice(graph)["nodes"]) == 4
 
 
+def test_repeated_compression_preserves_regularizer_weights():
+    once = compress_lattice(diamond())
+    twice = compress_lattice(once)
+    weight = lambda graph: sum(row["kl_weight"] for row in scoring_rows(graph) if row["action"] == "c")
+    assert weight(once) == pytest.approx(weight(twice))
+
+
 def test_detached_posterior_gradient_matches_differentiated_path_sum(graph):
     torch = pytest.importorskip("torch")
     scores = torch.linspace(-4, -3, len(graph["edges"]), dtype=torch.float64, requires_grad=True)

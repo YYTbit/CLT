@@ -31,6 +31,16 @@ def certify(trace, goal_id, verifier, threshold=0.65, *, now=None, snapshot_id=N
     goal = next((goal for goal in trace["goals"] if goal["id"] == goal_id), None)
     if goal is None:
         raise ValueError("Unknown declared requirement")
+    response_versions = {}
+    for action in trace["actions"]:
+        tool = trace["tools"][action["tool"]]
+        if (action.get("status") == "ok" and action.get("stable", False)
+                and action.get("snapshot_id") == trace["snapshot_id"]
+                and tool.get("read_only", False) and tool.get("reusable_response", False)
+                and action.get("response_digest") == digest(action["response"])):
+            request = digest({"tool": action["tool"], "arguments": action["arguments"]})
+            response_versions.setdefault(request, set()).add(action["response_digest"])
+    conflicts = {request for request, versions in response_versions.items() if len(versions) > 1}
     resources = {resource: None for resource in trace.get("initial_resources", [])}
     valid, prerequisites, status = {}, {}, {}
     complete_bindings = {}
@@ -78,6 +88,9 @@ def certify(trace, goal_id, verifier, threshold=0.65, *, now=None, snapshot_id=N
             expiry = datetime.fromisoformat(expiration.replace("Z", "+00:00"))
             if expiry.tzinfo is None or expiry <= now:
                 reason = "expired_snapshot"
+        request = digest({"tool": action["tool"], "arguments": action["arguments"]})
+        if request in conflicts:
+            reason = "conflicting_snapshot_responses"
         for document_id in action.get("document_ids", []):
             document = trace["documents"].get(document_id)
             if (document is None or document.get("content_digest") != digest(document["text"])
@@ -113,11 +126,19 @@ def certify(trace, goal_id, verifier, threshold=0.65, *, now=None, snapshot_id=N
     # for a later declared requirement, rather than commuting reads across it.
     barrier = next((index for index, action in enumerate(window)
                     if not trace["tools"][action["tool"]].get("read_only", False)), len(window))
-    eligible = [action for action in window[:barrier] if action["id"] in valid]
-    eligible_ids = {action["id"] for action in eligible}
     initial_set = set(initial_ids) & valid.keys()
-    eligible = [action for action in eligible
-                if prerequisites[action["id"]] <= eligible_ids | initial_set]
+    eligible, available = [], set(initial_set)
+    for action in window[:barrier]:
+        action_id = action["id"]
+        if action_id not in valid:
+            continue
+        if not trace["tools"][action["tool"]].get("reusable_response", False):
+            status[action_id] = "unreusable_response"
+        elif not prerequisites[action_id] <= available:
+            status[action_id] = "unavailable_replay_prerequisite"
+        else:
+            eligible.append(action)
+            available.add(action_id)
     eligible_ids = {action["id"] for action in eligible}
     dependencies = {action["id"]: set(prerequisites[action["id"]]) & eligible_ids for action in eligible}
     exchanges, retained = [], []
@@ -147,6 +168,7 @@ def certify(trace, goal_id, verifier, threshold=0.65, *, now=None, snapshot_id=N
     result = {"task_id": trace["task_id"], "data_kind": trace["data_kind"], "goal": goal,
               "trace_digest": digest(trace), "snapshot_id": trace["snapshot_id"],
               "actions": eligible, "initial_ids": initial_ids, "proof": proof,
+              "validated_ids": sorted(eligible_ids | initial_set),
               "verification_observed": verification_action is None or verification_index is not None,
               "dependencies": {key: sorted(value) for key, value in dependencies.items()},
               "exchanges": exchanges, "retained_precedence": retained,
@@ -155,13 +177,18 @@ def certify(trace, goal_id, verifier, threshold=0.65, *, now=None, snapshot_id=N
     return result
 
 
-def assert_fresh(certificate, trace):
+def assert_fresh(certificate, trace, *, now=None):
     if certificate["trace_digest"] != digest(trace):
         raise ValueError("Trace or source revision changed; re-certification is required")
     expected = digest({key: value for key, value in certificate.items() if key != "certificate_id"})
     if certificate["certificate_id"] != expected:
         raise ValueError("Certificate integrity check failed")
-    for action in certificate["actions"]:
+    now = now or datetime.now(timezone.utc)
+    validated = set(certificate.get("validated_ids", certificate["initial_ids"] + [
+        action["id"] for action in certificate["actions"]]))
+    for action in trace["actions"]:
+        if action["id"] not in validated:
+            continue
         expiration = action.get("expires_at")
-        if expiration and datetime.fromisoformat(expiration.replace("Z", "+00:00")) <= datetime.now(timezone.utc):
+        if expiration and datetime.fromisoformat(expiration.replace("Z", "+00:00")) <= now:
             raise ValueError("A certified snapshot expired")
