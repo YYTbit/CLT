@@ -2,7 +2,7 @@
 
 ## Captured observations
 
-`TraceRecorder.to_dict()` produces a JSON object with `task_id`, `question`, `initial_context`, `snapshot_id`, `data_kind`, `tools`, `initial_resources`, `actions`, `documents`, and `goals`. Set `data_kind` to `captured_trace` for research observations. The executable example uses `software_fixture`.
+`TraceRecorder.to_dict()` produces a JSON object with `task_id`, `question`, `initial_context`, `snapshot_id`, `data_kind`, `tools`, `initial_resources`, `actions`, `documents`, and `goals`. Set `data_kind` to `captured_trace` for research observations. The bundled example uses `software_fixture`.
 
 Each tool entry declares `read_only`, `reusable_response`, and `resource_arguments`. The latter contains dotted argument paths such as `url`. Include the environment's argument schema and tool description in the same entry. These declarations describe the actual environment's capabilities.
 
@@ -58,7 +58,7 @@ The verifier selects sentence spans from acquired documents and tests their enta
 
 For questions with an unknown factual value, declare `hypothesis_template` and `extraction_pattern` in place of `hypothesis`. Named regex groups bind values from acquired passages, for example `The project started in (?P<year>\d{4})\.` with template `The project started in {year}.`. The template and extraction rule are declared before acquisition; the answer value comes from observed text. NLI verifies each instantiated claim. Independent supports must agree on the same instantiated claim.
 
-`NLIVerifier` loads a sequence-classification checkpoint with an explicit entailment label. The default checkpoint is [DeBERTa-v3-large-mnli-fever-anli-ling-wanli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli). Its resolved revision is recorded in the certificate. `LiteralFixtureVerifier` is restricted to software fixtures.
+`NLIVerifier` loads a sequence-classification checkpoint with an explicit entailment label. The default checkpoint is [DeBERTa-v3-large-mnli-fever-anli-ling-wanli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli). Its resolved revision is recorded in the certificate. `LiteralFixtureVerifier` supports examples with `data_kind: software_fixture`.
 
 A claim becomes true when its currently acquired supports meet the independent-origin count. AND nodes require every child; OR nodes accept any child. Multiple certificates establishing the same action sequence contribute one completion path. Requirements already satisfied by the immutable prefix produce no new checkpoint update.
 
@@ -74,7 +74,7 @@ The inside and forward passes operate in the log domain. Edge and terminal poste
 
 The objective is `-log Z + beta * KL(reference || current)`. The regularizer uses full-vocabulary token KL. Predetermined weights are uniform over scored original states, uniform over their outgoing complete actions, and uniform over each action's predicted token positions. Explicit terminal events participate as scored states. These weights remain independent of path posteriors. Symbolic compression retains original-state multiplicity for the regularizer.
 
-Fresh LoRA adapters have zero initial contribution. Disabling them therefore evaluates the fixed entering backbone without duplicating its weights. The configured target modules cover attention and feed-forward projections; Gemma adapters are confined to its language model. AdamW uses weight decay 0.01. These module selections, token ending, KL averaging weights, and graph limit are explicit implementation settings; the shared algorithm settings are listed in the README.
+Fresh LoRA adapters have zero initial contribution. Disabling them therefore evaluates the fixed entering backbone without duplicating its weights. The configured target modules cover attention and feed-forward projections; Gemma adapters are confined to its language model. AdamW uses weight decay 0.01. These module selections, token ending, KL averaging weights, and graph limit are explicit implementation settings; the shared algorithm settings are defined in [the model profiles](../configs).
 
 Each newly verified requirement triggers up to two optimizer steps. Intermediate adapter and optimizer states are committed after each step when a checkpoint directory is configured. Resume completes the remaining steps after an interruption. A handled numerical failure closes the checkpoint and preserves its completed finite steps; research then continues with the resulting policy. The processed-requirement registry prevents retraining the same requirement from a later trace prefix. Call `start_task` for an independent task; it restores the declared initial adapter and a fresh optimizer. A changed model, tokenizer, chat template, context format, or configuration fails checkpoint restoration.
 
@@ -85,3 +85,7 @@ Each newly verified requirement triggers up to two optimizer steps. Intermediate
 `OnlineAgent.run` accepts a `TraceRecorder` with declared goals and a callable tool executor. The executor receives the complete action string and returns `ToolResult`, including the actual response, documents, resource discovery, stability, and captured bindings. This connects acquisition directly to certification and continued action generation.
 
 `SnapshotTools` supplies a concrete executor for a captured immutable environment. It enforces captured resource availability and reuses recorded tool latency. `examples/online_adaptation.py` loads its snapshot, selects actions with the backbone, and invokes checkpoint updates. Prepare public tasks, tool snapshots, and source attribution with the native benchmark environment before this run. Native evaluators consume completed research outputs independently of checkpoint verification.
+
+## Evaluation
+
+Store benchmark scores as JSONL records with `data_kind: benchmark_result`. Each record contains `benchmark`, `split`, `metric`, `seed`, `value`, `dataset_revision`, `model_revision`, and `evaluator_revision`. `clt summarize` reports the mean and sample standard deviation for each benchmark, metric, and set of revisions.
