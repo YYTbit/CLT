@@ -57,7 +57,6 @@ clt adapt --trace inputs/research_trace.json --goal requirement \
   --config configs/qwen3-8b.yaml --output outputs/task
 ```
 
-To resume an interrupted run, add `--resume outputs/task` to the same command.
 For online adaptation, see [online_adaptation.py](examples/online_adaptation.py).
 
 ## Evaluation
