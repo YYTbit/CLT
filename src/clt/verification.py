@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from .io import digest
 from .provenance import has_independent_support, verified_origin
@@ -21,15 +22,25 @@ class NLIVerifier:
         self.torch = torch
         self.tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_id, revision=revision).to(device).eval()
+            model_id, revision=revision).to(device).requires_grad_(False).eval()
         self.device, self.max_length = device, max_length
         labels = self.model.config.id2label
         indices = [int(index) for index, label in labels.items() if label.lower() == "entailment"]
         if len(indices) != 1:
             raise ValueError("The NLI configuration must explicitly identify its entailment label")
         self.entailment_index = indices[0]
-        self.identity = {"kind": "nli", "model": model_id,
-                         "revision": self.model.config._commit_hash or revision}
+        resolved = getattr(self.model.config, "_commit_hash", None) or revision
+        self.identity = {"kind": "nli", "model": model_id, "revision": resolved,
+                         "max_length": max_length, "entailment_index": self.entailment_index,
+                         "configuration": digest(self.model.config.to_dict()),
+                         "vocabulary": digest(self.tokenizer.get_vocab()),
+                         "special_tokens": digest(self.tokenizer.special_tokens_map)}
+        if hasattr(self.tokenizer, "backend_tokenizer"):
+            self.identity["tokenizer_backend"] = digest(self.tokenizer.backend_tokenizer.to_str())
+        if Path(model_id).is_dir() or resolved is None:
+            from .policy import parameter_digest
+            # A local directory can retain its name while its verifier weights change.
+            self.identity["parameters_sha256"] = parameter_digest(self.model)
 
     def entailment(self, premise, hypothesis):
         encoded = self.tokenizer(premise, hypothesis, return_tensors="pt", truncation=False)
