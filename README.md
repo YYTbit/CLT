@@ -30,20 +30,9 @@ Use Python 3.10 or later and install PyTorch for your system.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[models,test]' \
+python -m pip install -e '.[models]' \
   --index-url https://pypi.tuna.tsinghua.edu.cn/simple
 export HF_ENDPOINT=https://hf-mirror.com
-```
-
-## Quick start
-
-Compile the bundled example trace:
-
-```bash
-python examples/capture_trace.py --output outputs/example/trace.json
-
-clt compile --trace outputs/example/trace.json --goal start_year \
-  --verifier literal-fixture --output outputs/example/compiled
 ```
 
 ## Test-time training
@@ -74,12 +63,6 @@ results, then summarize them:
 
 ```bash
 clt summarize --scores inputs/native_scores.jsonl --output outputs/summary.json
-```
-
-## Tests
-
-```bash
-python -m pytest -q
 ```
 
 ## License

@@ -2,7 +2,7 @@
 
 ## Captured observations
 
-`TraceRecorder.to_dict()` produces a JSON object with `task_id`, `question`, `initial_context`, `snapshot_id`, `data_kind`, `tools`, `initial_resources`, `actions`, `documents`, and `goals`. Set `data_kind` to `captured_trace` for research observations. The bundled example uses `software_fixture`.
+`TraceRecorder.to_dict()` produces a JSON object with `task_id`, `question`, `initial_context`, `snapshot_id`, `data_kind`, `tools`, `initial_resources`, `actions`, `documents`, and `goals`. Set `data_kind` to `captured_trace` for research observations.
 
 Each tool entry declares `read_only`, `reusable_response`, and `resource_arguments`. The latter contains dotted argument paths such as `url`. Include the environment's argument schema and tool description in the same entry. These declarations describe the actual environment's capabilities.
 
@@ -58,7 +58,7 @@ The verifier selects sentence spans from acquired documents and tests their enta
 
 For questions with an unknown factual value, declare `hypothesis_template` and `extraction_pattern` in place of `hypothesis`. Named regex groups bind values from acquired passages, for example `The project started in (?P<year>\d{4})\.` with template `The project started in {year}.`. The template and extraction rule are declared before acquisition; the answer value comes from observed text. NLI verifies each instantiated claim. Independent supports must agree on the same instantiated claim.
 
-`NLIVerifier` loads a sequence-classification checkpoint with an explicit entailment label. The default checkpoint is [DeBERTa-v3-large-mnli-fever-anli-ling-wanli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli). Its resolved revision is recorded in the certificate. `LiteralFixtureVerifier` supports examples with `data_kind: software_fixture`.
+`NLIVerifier` loads a sequence-classification checkpoint with an explicit entailment label. The default checkpoint is [DeBERTa-v3-large-mnli-fever-anli-ling-wanli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli). Its resolved revision is recorded in the certificate.
 
 A claim becomes true when its currently acquired supports meet the independent-origin count. AND nodes require every child; OR nodes accept any child. Multiple certificates establishing the same action sequence contribute one completion path. Requirements already satisfied by the immutable prefix produce no new checkpoint update.
 
