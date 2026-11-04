@@ -57,7 +57,8 @@ clt adapt --trace inputs/research_trace.json --goal requirement \
   --config configs/qwen3-8b.yaml --output outputs/task
 ```
 
-For online adaptation, see [online_adaptation.py](examples/online_adaptation.py).
+Run CLT updates at verified research checkpoints using the
+[execution example](examples/online_adaptation.py).
 
 ## Evaluation
 
