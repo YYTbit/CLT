@@ -23,17 +23,13 @@ training.
 
 To construct a reliable training signal from one Web research execution, CLT first certifies action dependencies and evidence requirements using recorded interactions.
 
-1. Retain eligible read-only actions and their observations. Certify prerequisites, exchanges, and snapshot validity.
-2. Construct the dependency graph and proof graph. Compile the first-completion lattice.
-3. If a certified completion is reachable, build canonical states and refine compatible state groups. At each update, score continuing actions and terminal events, then compute completion mass, forward prefix mass, and edge and terminal posterior probabilities.
-4. If completion mass is finite and positive, update the policy using the CLT objective.
-5. Continue Web research with the resulting policy.
-
 <p align="center">
   <img src="assets/overview.png" width="100%" alt="Adaptation from a Web research execution.">
 </p>
 
 **Figure 1.** Adaptation from a Web research execution. The illustrated task traces doctoral-advisor relationships through linked biographies. After link discovery, six independent reads needed for verification admit 720 orders over 64 acquired-evidence states. Context reuse, single-trace supervision, and path sampling use different portions of this experience. CLT shares partial evidence states and computes the aggregate training contribution exactly within the constructed execution lattice.
+
+![Algorithm 1](assets/algorithm.png)
 
 ## Results
 
@@ -49,24 +45,24 @@ To construct a reliable training signal from one Web research execution, CLT fir
 
 ![Component ablations from Table 2](assets/ablations.png)
 
+**The recovered execution space accounts for most of the improvement.** The frozen-to-CLT WWQA gains are 8.4, 8.9, and 9.0 points. Order-space training recovers 54 to 56 percent of these gains, proof-space training recovers 63 to 67 percent, and sampled-lattice training recovers 80 to 82 percent. Exact aggregation adds 1.6 to 1.8 points over sampled-lattice TTT at 23 percent higher wall time. Combining both spaces jointly supervises execution independence and evidence choice.
+
 ### Analysis
 
 ![Analysis from Figure 2](assets/analysis.png)
 
 **Figure 2.** Execution-space analysis. (a) Certified paths by action count. (b) States before and after compression. (c) Sampled-gradient error relative to exact aggregation, with logarithmic axes. (d) Valid paths by proof alternatives. Bands show one standard deviation over five seeds.
 
+**Space structure explains the benefit of complete marginalization.** Additional proof alternatives expand the valid paths on WWQA, FRAMES, and FanOutQA in panel (d). Thus, evidence diversity enlarges supervision from the recorded interaction.
+
 ## Getting Started
 
 ### Environment Setup
 
-Use Python 3.10 or later and install PyTorch for your system.
-
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[models]' \
-  --index-url https://pypi.tuna.tsinghua.edu.cn/simple
-export HF_ENDPOINT=https://hf-mirror.com
+conda create -n clt python=3.10 -y
+conda activate clt
+pip install -e '.[models]'
 ```
 
 ### Data Preparation
@@ -83,7 +79,7 @@ The command below reads `inputs/research_trace.json` and uses `requirement`
 as the requirement identifier. The [input format](docs/trace-format.md#captured-observations)
 specifies the trace fields.
 
-### Training and Evaluation
+## Training
 
 Run test-time training with Qwen3-8B:
 
@@ -91,6 +87,8 @@ Run test-time training with Qwen3-8B:
 clt adapt --trace inputs/research_trace.json --goal requirement \
   --config configs/qwen3-8b.yaml --output outputs/task
 ```
+
+## Evaluation
 
 Evaluate completed answers with each benchmark’s official evaluator.
 Save the scores in `inputs/native_scores.jsonl` using the
