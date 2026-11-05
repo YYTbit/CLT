@@ -96,25 +96,31 @@ specifies the trace fields.
 
 ## Training
 
-Run CLT at a verified research checkpoint with Qwen3-8B:
+Select a backbone:
+
+- **Qwen3-8B**: `MODEL=qwen3-8b`
+- **Llama-3.1-8B-Instruct**: `MODEL=llama3.1-8b`
+- **Gemma-3-4B-it**: `MODEL=gemma3-4b`
+
+Run CLT with the selected backbone:
 
 ```bash
 python -m clt adapt --trace inputs/research_trace.json --goal requirement \
-  --config configs/qwen3-8b.yaml --output outputs/task
+  --config "configs/${MODEL}.yaml" --output "outputs/${MODEL}"
 ```
 
-To resume an interrupted checkpoint update, add `--resume outputs/task` to the
-same training command.
+To resume an interrupted checkpoint update, add `--resume "outputs/${MODEL}"`
+to the same training command.
 
 ## Usage
 
-Continue research with the updated policy, using the current trace and the next
-declared requirement in the same task. The command emits the next tool request
-for execution by the research environment:
+Continue research with the selected backbone and updated policy, using the current
+trace and the next declared requirement in the same task. The command emits the
+next tool request for execution by the research environment:
 
 ```bash
 python -m clt continue --trace inputs/current_trace.json --goal next_requirement \
-  --config configs/qwen3-8b.yaml --checkpoint outputs/task
+  --config "configs/${MODEL}.yaml" --checkpoint "outputs/${MODEL}"
 ```
 
 ## Evaluation
