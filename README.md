@@ -21,13 +21,40 @@ training.
 
 ## Algorithm Flow
 
-To construct a reliable training signal from one Web research execution, CLT first certifies action dependencies and evidence requirements using recorded interactions.
+To construct a reliable training signal from one Web research execution, CLT first
+certifies action dependencies and evidence requirements using recorded interactions. It
+then compiles the certified alternatives into a shared-state execution lattice. Finally,
+an exact graph computation supplies the completion mass and its gradient for test-time
+updates.
 
 <p align="center">
   <img src="assets/overview.png" width="100%" alt="Adaptation from a Web research execution.">
 </p>
 
 **Figure 1.** Adaptation from a Web research execution. The illustrated task traces doctoral-advisor relationships through linked biographies. After link discovery, six independent reads needed for verification admit 720 orders over 64 acquired-evidence states. Context reuse, single-trace supervision, and path sampling use different portions of this experience. CLT shares partial evidence states and computes the aggregate training contribution exactly within the constructed execution lattice.
+
+1. **Verified Execution Graph Framework.** CLT first identifies action prerequisites
+   from recorded tool calls and certifies exchanges of independent page reads. It then
+   constructs a source-aware proof graph for jointly required facts and alternative
+   supporting evidence.
+
+2. **Proof-Constrained Lattice Design.** Together, these constraints define an execution
+   lattice that shares partial evidence states across valid action orders and records
+   when each requirement is satisfied. Further compression groups states with equivalent
+   future completion computations. A conservative backward partition refinement compares
+   terminal behavior, canonical contexts, action strings, action costs, and successor
+   groups. It retains the multiplicity of transitions entering each group, ensuring that
+   their mass contributions are accumulated correctly.
+
+3. **Causal-Lattice Training Algorithm.** We formulate TTT as maximizing the
+   cost-weighted mass of certified completion paths and derive an exact inside-outside
+   dynamic program for this mass and its gradient. At verified intermediate checkpoints,
+   CLT uses this training signal to update selected large language model parameters
+   before continuing research. Posterior path weights are detached within each step and
+   recomputed after the parameters change. If verification yields no certified
+   completion, or the completion mass is numerically unavailable, CLT keeps the current
+   policy and continues research. Independent evaluation tasks restore their declared
+   initial checkpoint.
 
 ![Algorithm 1](assets/algorithm.png)
 
@@ -48,7 +75,7 @@ To construct a reliable training signal from one Web research execution, CLT fir
 ### Environment Setup
 
 ```bash
-conda create -n clt python=3.10 -y
+conda env create -f environment.yml
 conda activate clt
 pip install -e '.[models]'
 ```
@@ -69,11 +96,25 @@ specifies the trace fields.
 
 ## Training
 
-Run test-time training with Qwen3-8B:
+Run CLT at a verified research checkpoint with Qwen3-8B:
 
 ```bash
-clt adapt --trace inputs/research_trace.json --goal requirement \
+python -m clt adapt --trace inputs/research_trace.json --goal requirement \
   --config configs/qwen3-8b.yaml --output outputs/task
+```
+
+To resume an interrupted checkpoint update, add `--resume outputs/task` to the
+same training command.
+
+## Usage
+
+Continue research with the updated policy, using the current trace and the next
+declared requirement in the same task. The command emits the next tool request
+for execution by the research environment:
+
+```bash
+python -m clt continue --trace inputs/current_trace.json --goal next_requirement \
+  --config configs/qwen3-8b.yaml --checkpoint outputs/task
 ```
 
 ## Evaluation
@@ -83,7 +124,7 @@ Save the scores in `inputs/native_scores.jsonl` using the
 [score record format](docs/trace-format.md#evaluation), then aggregate the runs:
 
 ```bash
-clt summarize --scores inputs/native_scores.jsonl --output outputs/summary.json
+python -m clt summarize --scores inputs/native_scores.jsonl --output outputs/summary.json
 ```
 
 ## License

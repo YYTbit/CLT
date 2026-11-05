@@ -84,6 +84,8 @@ Each newly verified requirement triggers up to two optimizer steps. Intermediate
 
 `OnlineAgent.run` accepts a `TraceRecorder` with declared goals and a callable tool executor. The executor receives the complete action string and returns `ToolResult`, including the actual response, documents, resource discovery, stability, and captured bindings. This connects acquisition directly to certification and continued action generation.
 
+The `clt continue` command restores a saved checkpoint and emits one complete request for a declared goal in the current trace. The trace retains the same task identifier and includes the next requirement before its supporting actions. The research environment executes the request, records its response, and invokes the next checkpoint when that requirement is verified.
+
 `SnapshotTools` supplies a concrete executor for a captured immutable environment. It enforces captured resource availability and reuses recorded tool latency. Prepare public tasks, tool snapshots, and source attribution with the native benchmark environment. Native evaluators consume completed research outputs independently of checkpoint verification.
 
 ## Evaluation
