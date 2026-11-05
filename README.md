@@ -37,13 +37,23 @@ To construct a reliable training signal from one Web research execution, CLT fir
 
 ## Results
 
+### Main Results
+
 **Table 1.** Performance on five public benchmarks and three backbones. WWQA, FR, and FO report answer scores, with FO denoting the FanOutQA blind test; DRB reports RACE, citation accuracy (C. Acc.), and effective citations (E. Cit.); SQA reports the global score. Entries report five-seed means; ± denotes sample standard deviation. Bold marks the best score per backbone.
 
 ![Main results from Table 1](assets/main_results.png)
 
-**CLT improves answer quality across model families and retrieval requirements.** On WWQA, it leads the strongest external method by 4.9, 3.3, and 3.2 points for Qwen, Llama, and Gemma. The corresponding FRAMES gains are 4.9, 3.5, and 3.5 points. FanOutQA gains are 5.3, 4.1, and 4.7 points under the official blind evaluation. Crediting certified alternatives supports both navigation and evidence gathering.
+### Ablation Study
 
-**The gains extend to report quality and citation accuracy.** CLT improves RACE by 5.1, 3.8, and 3.6 points and ScholarQA-CS2 by 3.8, 3.2, and 3.2 points over the strongest external results. Citation-accuracy gains are 4.6, 3.3, and 3.6 points. Source-aware proofs align completion supervision with supporting passages and their origins.
+**Table 2.** Coarse-grained ablations on five benchmarks and three backbones. FO is the FanOutQA blind test; FO cells report its five-seed mean. Other entries are five-seed means±std. Bold marks the best variant.
+
+![Component ablations from Table 2](assets/ablations.png)
+
+### Analysis
+
+![Analysis from Figure 2](assets/analysis.png)
+
+**Figure 2.** Execution-space analysis. (a) Certified paths by action count. (b) States before and after compression. (c) Sampled-gradient error relative to exact aggregation, with logarithmic axes. (d) Valid paths by proof alternatives. Bands show one standard deviation over five seeds.
 
 ## Getting Started
 
@@ -61,27 +71,30 @@ export HF_ENDPOINT=https://hf-mirror.com
 
 ### Data Preparation
 
-Record tool calls and supporting evidence with `TraceRecorder`, following the
-[trace guide](docs/trace-format.md). Choose a model profile from [configs/](configs).
+The experiments use [WebWalkerQA](https://huggingface.co/datasets/callanwu/WebWalkerQA),
+[FRAMES](https://huggingface.co/datasets/google/frames-benchmark),
+[FanOutQA](https://github.com/zhudotexe/fanoutqa),
+[DeepResearchBench](https://github.com/Ayanami0730/deep_research_bench), and
+[ScholarQA-CS2](https://github.com/allenai/asta-bench).
+
+CLT takes a recorded research trace containing the task question, tool requests
+and observations, source documents, and declared verification requirements.
+The command below reads `inputs/research_trace.json` and uses `requirement`
+as the requirement identifier. The [input format](docs/trace-format.md#captured-observations)
+specifies the trace fields.
 
 ### Training and Evaluation
 
-Run test-time training on a verified research requirement:
+Run test-time training with Qwen3-8B:
 
 ```bash
 clt adapt --trace inputs/research_trace.json --goal requirement \
   --config configs/qwen3-8b.yaml --output outputs/task
 ```
 
-Evaluate completed answers with the official tools for
-[WebWalkerQA](https://huggingface.co/datasets/callanwu/WebWalkerQA),
-[FRAMES](https://huggingface.co/datasets/google/frames-benchmark),
-[FanOutQA](https://github.com/zhudotexe/fanoutqa),
-[DeepResearchBench](https://github.com/Ayanami0730/deep_research_bench), and
-[ScholarQA-CS2](https://github.com/allenai/asta-bench).
-
-Collect benchmark results using the [score format](docs/trace-format.md#evaluation),
-then summarize them:
+Evaluate completed answers with each benchmark’s official evaluator.
+Save the scores in `inputs/native_scores.jsonl` using the
+[score record format](docs/trace-format.md#evaluation), then aggregate the runs:
 
 ```bash
 clt summarize --scores inputs/native_scores.jsonl --output outputs/summary.json
