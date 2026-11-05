@@ -21,3 +21,4 @@ data/
 .private*/
 /tests/
 /examples/capture_trace.py
+/examples/online_adaptation.py

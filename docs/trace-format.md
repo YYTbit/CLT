@@ -84,7 +84,7 @@ Each newly verified requirement triggers up to two optimizer steps. Intermediate
 
 `OnlineAgent.run` accepts a `TraceRecorder` with declared goals and a callable tool executor. The executor receives the complete action string and returns `ToolResult`, including the actual response, documents, resource discovery, stability, and captured bindings. This connects acquisition directly to certification and continued action generation.
 
-`SnapshotTools` supplies a concrete executor for a captured immutable environment. It enforces captured resource availability and reuses recorded tool latency. `examples/online_adaptation.py` loads its snapshot, selects actions with the backbone, and invokes checkpoint updates. Prepare public tasks, tool snapshots, and source attribution with the native benchmark environment before this run. Native evaluators consume completed research outputs independently of checkpoint verification.
+`SnapshotTools` supplies a concrete executor for a captured immutable environment. It enforces captured resource availability and reuses recorded tool latency. Prepare public tasks, tool snapshots, and source attribution with the native benchmark environment. Native evaluators consume completed research outputs independently of checkpoint verification.
 
 ## Evaluation
 

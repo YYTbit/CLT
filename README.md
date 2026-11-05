@@ -19,9 +19,21 @@ raises subsequent verification by up to 9.4 points over the frozen policy and
 reduces reference-policy KL by 64.6–66.0 percent relative to single-trace
 training.
 
+## Method
+
+To construct a reliable training signal from one Web research execution, CLT first certifies action dependencies and evidence requirements using recorded interactions. It then compiles the certified alternatives into a shared-state execution lattice. Finally, an exact graph computation supplies the completion mass and its gradient for test-time updates.
+
 <p align="center">
   <img src="assets/overview.png" width="100%" alt="Adaptation from a Web research execution.">
 </p>
+
+**Figure 1.** Adaptation from a Web research execution. The illustrated task traces doctoral-advisor relationships through linked biographies. After link discovery, six independent reads needed for verification admit 720 orders over 64 acquired-evidence states. Context reuse, single-trace supervision, and path sampling use different portions of this experience. CLT shares partial evidence states and computes the aggregate training contribution exactly within the constructed execution lattice.
+
+## Main Results
+
+**Table 1.** Performance on five public benchmarks and three backbones. WWQA, FR, and FO report answer scores, with FO denoting the FanOutQA blind test; DRB reports RACE, citation accuracy (C. Acc.), and effective citations (E. Cit.); SQA reports the global score. Entries report five-seed means; ± denotes sample standard deviation. Bold marks the best score per backbone.
+
+![Main results from Table 1](assets/main_results.png)
 
 ## Installation
 
@@ -45,9 +57,6 @@ and run adaptation on a verified requirement:
 clt adapt --trace inputs/research_trace.json --goal requirement \
   --config configs/qwen3-8b.yaml --output outputs/task
 ```
-
-Run CLT updates at verified research checkpoints using the
-[execution example](examples/online_adaptation.py).
 
 ## Evaluation
 
