@@ -39,21 +39,9 @@ To construct a reliable training signal from one Web research execution, CLT fir
 
 ![Main results from Table 1](assets/main_results.png)
 
-### Ablation Study
+**CLT improves answer quality across model families and retrieval requirements.** On WWQA, it leads the strongest external method by 4.9, 3.3, and 3.2 points for Qwen, Llama, and Gemma. The corresponding FRAMES gains are 4.9, 3.5, and 3.5 points. FanOutQA gains are 5.3, 4.1, and 4.7 points under the official blind evaluation. Crediting certified alternatives supports both navigation and evidence gathering.
 
-**Table 2.** Coarse-grained ablations on five benchmarks and three backbones. FO is the FanOutQA blind test; FO cells report its five-seed mean. Other entries are five-seed means±std. Bold marks the best variant.
-
-![Component ablations from Table 2](assets/ablations.png)
-
-**The recovered execution space accounts for most of the improvement.** The frozen-to-CLT WWQA gains are 8.4, 8.9, and 9.0 points. Order-space training recovers 54 to 56 percent of these gains, proof-space training recovers 63 to 67 percent, and sampled-lattice training recovers 80 to 82 percent. Exact aggregation adds 1.6 to 1.8 points over sampled-lattice TTT at 23 percent higher wall time. Combining both spaces jointly supervises execution independence and evidence choice.
-
-### Analysis
-
-![Analysis from Figure 2](assets/analysis.png)
-
-**Figure 2.** Execution-space analysis. (a) Certified paths by action count. (b) States before and after compression. (c) Sampled-gradient error relative to exact aggregation, with logarithmic axes. (d) Valid paths by proof alternatives. Bands show one standard deviation over five seeds.
-
-**Space structure explains the benefit of complete marginalization.** Additional proof alternatives expand the valid paths on WWQA, FRAMES, and FanOutQA in panel (d). Thus, evidence diversity enlarges supervision from the recorded interaction.
+**The gains extend to report quality and citation accuracy.** CLT improves RACE by 5.1, 3.8, and 3.6 points and ScholarQA-CS2 by 3.8, 3.2, and 3.2 points over the strongest external results. Citation-accuracy gains are 4.6, 3.3, and 3.6 points. Source-aware proofs align completion supervision with supporting passages and their origins.
 
 ## Getting Started
 
