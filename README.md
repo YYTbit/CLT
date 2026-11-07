@@ -33,6 +33,8 @@ then compiles the certified alternatives into a shared-state execution lattice. 
 an exact graph computation supplies the completion mass and its gradient for test-time
 updates.
 
+The algorithm flow includes:
+
 1. **Verified Execution Graph Framework.** For each recorded action, the compiler
    retains its exact tool name, arguments, response, discovered links, content digest,
    and snapshot identifier. It first adds prerequisites when a request uses a URL,
@@ -55,6 +57,8 @@ updates.
    completion, or the completion mass is numerically unavailable, CLT keeps the current
    policy and continues research. Independent evaluation tasks restore their declared
    initial checkpoint.
+
+The pseudocode for Causal-Lattice Training is as follows:
 
 ![Algorithm 1](assets/algorithm.png)
 
