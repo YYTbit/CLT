@@ -21,37 +21,37 @@ training.
 
 ## Algorithm Flow
 
-To construct a reliable training signal from one Web research execution, CLT first
-certifies action dependencies and evidence requirements using recorded interactions. It
-then compiles the certified alternatives into a shared-state execution lattice. Finally,
-an exact graph computation supplies the completion mass and its gradient for test-time
-updates.
-
 <p align="center">
   <img src="assets/overview.png" width="100%" alt="Adaptation from a Web research execution.">
 </p>
 
 **Figure 1.** Adaptation from a Web research execution. The illustrated task traces doctoral-advisor relationships through linked biographies. After link discovery, six independent reads needed for verification admit 720 orders over 64 acquired-evidence states. Context reuse, single-trace supervision, and path sampling use different portions of this experience. CLT shares partial evidence states and computes the aggregate training contribution exactly within the constructed execution lattice.
 
-1. **Verified Execution Graph Framework.** CLT first identifies action prerequisites
-   from recorded tool calls and certifies exchanges of independent page reads. It then
-   constructs a source-aware proof graph for jointly required facts and alternative
-   supporting evidence.
+To construct a reliable training signal from one Web research execution, CLT first
+certifies action dependencies and evidence requirements using recorded interactions. It
+then compiles the certified alternatives into a shared-state execution lattice. Finally,
+an exact graph computation supplies the completion mass and its gradient for test-time
+updates.
 
-2. **Proof-Constrained Lattice Design.** Together, these constraints define an execution
-   lattice that shares partial evidence states across valid action orders and records
-   when each requirement is satisfied. Further compression groups states with equivalent
-   future completion computations. A conservative backward partition refinement compares
-   terminal behavior, canonical contexts, action strings, action costs, and successor
-   groups. It retains the multiplicity of transitions entering each group, ensuring that
-   their mass contributions are accumulated correctly.
+1. **Verified Execution Graph Framework.** For each recorded action, the compiler
+   retains its exact tool name, arguments, response, discovered links, content digest,
+   and snapshot identifier. It first adds prerequisites when a request uses a URL,
+   argument, or permission acquired through an earlier action. It preserves
+   the observed precedence for pairs with unresolved certificates. AND nodes represent
+   jointly required facts, OR nodes represent alternative supporting passages, and
+   distinct-origin constraints implement requirements for independent sources.
 
-3. **Causal-Lattice Training Algorithm.** We formulate TTT as maximizing the
-   cost-weighted mass of certified completion paths and derive an exact inside-outside
-   dynamic program for this mass and its gradient. At verified intermediate checkpoints,
-   CLT uses this training signal to update selected large language model parameters
-   before continuing research. Posterior path weights are detached within each step and
-   recomputed after the parameters change. If verification yields no certified
+2. **Proof-Constrained Lattice Design.** This graph shares partial states reached through
+   certified alternative orders and applies the evidence proof condition at every state.
+   A conservative backward partition refinement compares terminal behavior, canonical
+   contexts, action strings, action costs, and successor groups. It retains the
+   multiplicity of transitions entering each group, ensuring that their mass
+   contributions are accumulated correctly.
+
+3. **Causal-Lattice Training Algorithm.** Thus, the dynamic program evaluates the
+   completion mass and gradient of the entire certified completion space exactly for
+   the current policy and compiled graph. Posterior path weights are detached within
+   each step and recomputed after the parameters change. If verification yields no certified
    completion, or the completion mass is numerically unavailable, CLT keeps the current
    policy and continues research. Independent evaluation tasks restore their declared
    initial checkpoint.

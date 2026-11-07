@@ -5,24 +5,17 @@ from .io import digest
 from .provenance import has_independent_support, verified_origin
 
 
-class LiteralFixtureVerifier:
-    """An exact-span software fixture, distinct from the NLI verification path."""
-
-    identity = {"kind": "software_fixture", "method": "literal_span"}
-
-    def entailment(self, premise, hypothesis):
-        return float(premise.strip() == hypothesis.strip())
-
-
 class NLIVerifier:
     def __init__(self, model_id, revision=None, device="cpu", max_length=512):
         import torch
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
 
         self.torch = torch
+        configuration = AutoConfig.from_pretrained(model_id, revision=revision)
+        revision = getattr(configuration, "_commit_hash", None) or revision
         self.tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_id, revision=revision).to(device).requires_grad_(False).eval()
+            model_id, revision=revision, config=configuration).to(device).requires_grad_(False).eval()
         self.device, self.max_length = device, max_length
         labels = self.model.config.id2label
         indices = [int(index) for index, label in labels.items() if label.lower() == "entailment"]
@@ -54,7 +47,7 @@ class NLIVerifier:
 def construct_proof(trace, goal, eligible_ids, verifier, threshold=0.65):
     if not 0 <= threshold <= 1:
         raise ValueError("Invalid entailment threshold")
-    if isinstance(verifier, LiteralFixtureVerifier) and trace["data_kind"] != "software_fixture":
+    if verifier.identity.get("kind") == "software_fixture" and trace["data_kind"] != "software_fixture":
         raise ValueError("Literal verification is restricted to software fixtures")
     acquired = {}
     for action in trace["actions"]:

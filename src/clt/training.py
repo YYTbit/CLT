@@ -1,6 +1,7 @@
 import copy
 import math
 import os
+import random
 from pathlib import Path
 
 import numpy as np
@@ -70,13 +71,15 @@ class LatticeTrainer:
             return {"status": "already_updated", "version": self.version}
         if self.active_update is not None and tuple(self.active_update["key"]) != key:
             raise ValueError("Resume the active checkpoint update before adapting another requirement")
+        if self.active_update is not None and self.active_update["graph_digest"] != digest(graph):
+            raise ValueError("The active checkpoint update retains its compiled execution graph")
         if not graph["has_completion"]:
             return {"status": "no_new_certified_completion", "version": self.version}
         if self.checkpoint_count >= self.config["max_checkpoints"]:
             return {"status": "checkpoint_budget_exhausted", "version": self.version}
         rows = scoring_rows(graph)
         if self.active_update is None:
-            self.active_update = {"key": list(key), "steps": []}
+            self.active_update = {"key": list(key), "graph_digest": digest(graph), "steps": []}
         reports = self.active_update["steps"]
         failure = None
         for step in range(len(reports), self.config["update_steps"]):
@@ -145,14 +148,19 @@ class LatticeTrainer:
 
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
-        state = {"format_version": 1, "identity": self.policy.identity, "config": self.config,
+        numpy_rng = np.random.get_state()
+        devices = sorted({parameter.device.index for parameter in self.policy.model.parameters()
+                          if parameter.device.type == "cuda"})
+        state = {"format_version": 2, "identity": self.policy.identity, "config": self.config,
                  "task_id": self.task_id, "completed": sorted(self.completed),
                  "checkpoint_count": self.checkpoint_count, "version": self.version,
                  "adapter": get_peft_model_state_dict(self.policy.model),
                  "optimizer": self.optimizer.state_dict(), "history": self.history,
                  "active_update": self.active_update,
                  "initial_adapter": self.initial_adapter,
-                 "torch_rng": self.torch.get_rng_state()}
+                 "torch_rng": self.torch.get_rng_state(), "python_rng": random.getstate(),
+                 "numpy_rng": (numpy_rng[0], numpy_rng[1].tolist(), *numpy_rng[2:]),
+                 "cuda_rng": {str(device): self.torch.cuda.get_rng_state(device).cpu() for device in devices}}
         temporary = directory / ".pending-state.pt"
         self.torch.save(state, temporary)
         os.replace(temporary, directory / "state.pt")
@@ -164,8 +172,12 @@ class LatticeTrainer:
         state = self.torch.load(Path(directory) / "state.pt", map_location="cpu", weights_only=True)
         if digest(state["identity"]) != digest(self.policy.identity) or state["config"] != self.config:
             raise ValueError("Checkpoint model, tokenizer, or optimizer configuration changed")
-        if state.get("format_version") != 1:
+        if state.get("format_version") != 2:
             raise ValueError("Unsupported checkpoint format")
+        devices = {str(parameter.device.index) for parameter in self.policy.model.parameters()
+                   if parameter.device.type == "cuda"}
+        if set(state["cuda_rng"]) != devices:
+            raise ValueError("Checkpoint CUDA random states differ from the active model devices")
         self.initial_adapter = state["initial_adapter"]
         set_peft_model_state_dict(self.policy.model, state["adapter"])
         self.optimizer.load_state_dict(state["optimizer"])
@@ -174,3 +186,8 @@ class LatticeTrainer:
         self.history = state["history"]
         self.active_update = state["active_update"]
         self.torch.set_rng_state(state["torch_rng"])
+        random.setstate(state["python_rng"])
+        numpy_rng = state["numpy_rng"]
+        np.random.set_state((numpy_rng[0], np.asarray(numpy_rng[1], dtype=np.uint32), *numpy_rng[2:]))
+        for device, rng in state["cuda_rng"].items():
+            self.torch.cuda.set_rng_state(rng, int(device))

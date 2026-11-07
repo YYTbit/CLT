@@ -1,4 +1,6 @@
+import copy
 import hashlib
+import importlib.metadata
 import inspect
 from contextlib import nullcontext
 
@@ -52,13 +54,22 @@ def scoring_rows(graph):
 
 class LanguageModelPolicy:
     def __init__(self, model, tokenizer, context_length=32768, end_token_id=None, identity=None,
-                 chat_template_kwargs=None):
+                 chat_template_kwargs=None, generation_settings=None):
         import torch
 
         self.torch, self.model, self.tokenizer = torch, model, tokenizer
         self.context_length = context_length
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
-        native_marker = {"qwen3": "<|im_end|>", "llama": "<|eot_id|>", "gemma3": "<end_of_turn>"}.get(model.config.model_type)
+        self.generation_settings = dict(generation_settings or {})
+        allowed = {"do_sample", "temperature", "top_p", "top_k", "min_p", "typical_p",
+                   "epsilon_cutoff", "eta_cutoff", "repetition_penalty", "no_repeat_ngram_size"}
+        if set(self.generation_settings) - allowed:
+            raise ValueError("Generation overrides use native sampling parameters")
+        reserved = {"tokenize", "add_generation_prompt", "return_tensors", "return_dict"}
+        if reserved & set(self.chat_template_kwargs):
+            raise ValueError("Chat-template settings preserve the tokenization interface")
+        native_marker = {"qwen3": "<|im_end|>", "llama": "<|eot_id|>", "gemma3": "<end_of_turn>",
+                         "gemma3_text": "<end_of_turn>"}.get(model.config.model_type)
         default_end = (tokenizer.convert_tokens_to_ids(native_marker) if native_marker in tokenizer.get_vocab()
                        else tokenizer.eos_token_id)
         self.end_token_id = default_end if end_token_id is None else end_token_id
@@ -72,12 +83,18 @@ class LanguageModelPolicy:
                                      "architecture": digest(model.config.to_dict())}
         if not self.identity.get("revision"):
             self.identity["frozen_parameters"] = parameter_digest(model)
+        generation = {key: value for key, value in self.model.generation_config.to_dict().items()
+                      if key not in {"_from_model_config", "transformers_version"}}
         self.identity = {**self.identity, "tokenizer": digest(tokenizer.get_vocab()),
                          "chat_template": digest(tokenizer.chat_template),
                          "special_tokens": digest(tokenizer.special_tokens_map),
                          "context_format_version": CONTEXT_FORMAT_VERSION,
                          "end_token_id": self.end_token_id, "context_length": context_length,
-                         "chat_template_kwargs": self.chat_template_kwargs}
+                         "chat_template_kwargs": self.chat_template_kwargs,
+                         "generation": digest(generation), "generation_settings": self.generation_settings,
+                         "policy_protocol": 2,
+                         "libraries": {name: importlib.metadata.version(name)
+                                       for name in ("torch", "transformers", "peft")}}
         if hasattr(tokenizer, "backend_tokenizer"):
             self.identity["tokenizer_backend"] = digest(tokenizer.backend_tokenizer.to_str())
         self.model.eval()
@@ -86,28 +103,31 @@ class LanguageModelPolicy:
     def from_config(cls, config):
         import torch
         from peft import LoraConfig, get_peft_model
-        from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
+        from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, set_seed
 
         set_seed(config["seed"])
         model_config = config["model"]
         model_id, revision = model_config["id"], model_config.get("revision")
+        configuration = AutoConfig.from_pretrained(model_id, revision=revision)
+        revision = getattr(configuration, "_commit_hash", None) or revision
         tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
         dtype = {"bfloat16": torch.bfloat16, "float32": torch.float32}[model_config["dtype"]]
         base = AutoModelForCausalLM.from_pretrained(
-            model_id, revision=revision, torch_dtype=dtype, device_map=model_config.get("device_map", "auto"))
+            model_id, revision=revision, config=configuration, torch_dtype=dtype,
+            device_map=model_config.get("device_map", "auto"))
         adapter = config["adapter"]
         target_modules = adapter["target_modules"]
-        if base.config.model_type == "gemma3":
-            target_modules = r".*language_model\..*\.(" + "|".join(target_modules) + ")"
+        excluded = r"(?!.*language_model\.).*" if base.config.model_type == "gemma3" else None
         model = get_peft_model(base, LoraConfig(r=adapter["rank"], lora_alpha=adapter["alpha"],
-                                               target_modules=target_modules,
+                                               target_modules=target_modules, exclude_modules=excluded,
                                                lora_dropout=0.0, bias="none", task_type="CAUSAL_LM"))
         return cls(model, tokenizer, config["context_length"], model_config.get("end_token_id"),
-                   {"model": model_id, "revision": base.config._commit_hash or revision,
-                    "adapter": adapter, "dtype": model_config["dtype"]}, model_config.get("chat_template_kwargs"))
+                   {"model": model_id, "revision": getattr(base.config, "_commit_hash", None) or revision,
+                    "adapter": adapter, "dtype": model_config["dtype"]},
+                   model_config.get("chat_template_kwargs"), model_config.get("generation"))
 
     def _prompt(self, messages):
-        if self.model.config.model_type == "gemma3" and messages[0]["role"] == "system":
+        if self.model.config.model_type in {"gemma3", "gemma3_text"} and messages[0]["role"] == "system":
             messages = [{"role": "user", "content": messages[0]["content"] + "\n\n" + messages[1]["content"]},
                         *messages[2:]]
         return self.tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
@@ -168,17 +188,36 @@ class LanguageModelPolicy:
                 divergences.append(token_reference_kl(reference[index, -length - 1:-1], logits).mean())
         return torch.stack(scores), torch.stack(divergences) if divergences else None
 
+    def generation_config(self, max_new_tokens):
+        settings = copy.deepcopy(self.model.generation_config)
+        unused = settings.update(**self.generation_settings)
+        if unused or settings.num_return_sequences != 1:
+            raise ValueError("A policy continuation returns one sequence with supported generation settings")
+        ends = settings.eos_token_id
+        ends = list(ends) if isinstance(ends, (list, tuple)) else [] if ends is None else [ends]
+        if self.end_token_id not in ends:
+            ends.append(self.end_token_id)
+        settings.eos_token_id = ends if len(ends) > 1 else ends[0]
+        if settings.pad_token_id is None:
+            settings.pad_token_id = self.tokenizer.pad_token_id
+        settings.max_new_tokens = max_new_tokens
+        settings.validate()
+        return settings
+
     def generate(self, messages, max_new_tokens=512):
         torch = self.torch
+        if type(max_new_tokens) is not int or max_new_tokens < 1:
+            raise ValueError("Continuation limits are positive integer token counts")
         prompt = self._prompt(messages)
         if len(prompt) + max_new_tokens > self.context_length:
             raise ValueError("Continuation exceeds the model context budget")
         device = self.model.get_input_embeddings().weight.device
         inputs = torch.tensor([prompt], device=device)
+        settings = self.generation_config(max_new_tokens)
         with torch.no_grad():
             output = self.model.generate(input_ids=inputs, attention_mask=torch.ones_like(inputs),
-                                         max_new_tokens=max_new_tokens, do_sample=False,
-                                         eos_token_id=self.end_token_id, pad_token_id=self.tokenizer.pad_token_id)
+                                         generation_config=settings, use_model_defaults=False)
+        output = output.sequences if hasattr(output, "sequences") else output
         generated = output[0, len(prompt):].tolist()
         if not generated or generated[-1] != self.end_token_id:
             raise ValueError("Policy did not emit a complete action within max_new_tokens")
